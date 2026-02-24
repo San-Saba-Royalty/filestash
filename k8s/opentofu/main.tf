@@ -163,6 +163,19 @@ resource "kubernetes_deployment_v1" "filestash" {
       }
 
       spec {
+        # Create required state subdirectories on a fresh (empty) PVC.
+        # Filestash expects log/, cache/, search/, and share/ to pre-exist.
+        init_container {
+          name    = "init-dirs"
+          image   = "busybox:1.36"
+          command = ["sh", "-c", "mkdir -p /data/log /data/cache /data/search /data/share"]
+
+          volume_mount {
+            name       = "data"
+            mount_path = "/data"
+          }
+        }
+
         container {
           name  = "filestash"
           image = var.filestash_image
