@@ -159,6 +159,40 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: tofu init
 
+      - name: Import existing resources into state
+        working-directory: ${{ env.TOFU_WORKING_DIR }}
+        env:
+          ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET:   ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          import_if_missing() {
+            local resource="$1"
+            local id="$2"
+            if tofu state show "$resource" > /dev/null 2>&1; then
+              echo "  already in state: $resource"
+            else
+              echo "  importing: $resource ($id)"
+              tofu import \
+                -var="filestash_image=placeholder" \
+                -var="resource_group_name=${{ env.RESOURCE_GROUP }}" \
+                -var="cluster_name=${{ env.CLUSTER_NAME }}" \
+                -var="application_url=${{ env.APPLICATION_URL }}" \
+                -var="filestash_fqdn=${{ env.FILESTASH_FQDN }}" \
+                -var="azure_storage_account_name=${{ env.AZURE_STORAGE_ACCOUNT_NAME }}" \
+                -var="azure_storage_account_key=${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}" \
+                -var="filestash_admin_password=${{ secrets.FILESTASH_ADMIN_PASSWORD }}" \
+                "$resource" "$id" || echo "  import failed (may not exist yet) — continuing"
+            fi
+          }
+
+          import_if_missing "kubernetes_secret_v1.filestash_config"      "default/filestash-config"
+          import_if_missing "kubernetes_persistent_volume_claim_v1.filestash_data" "default/filestash-data"
+          import_if_missing "kubernetes_deployment_v1.filestash"          "default/filestash"
+          import_if_missing "kubernetes_service_v1.filestash"             "default/filestash"
+          import_if_missing "kubernetes_ingress_v1.filestash"             "iam/filestash-ingress"
+
       - name: OpenTofu Plan
         working-directory: ${{ env.TOFU_WORKING_DIR }}
         env:
