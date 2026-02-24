@@ -193,25 +193,6 @@ jobs:
           kubectl rollout status deployment/filestash -n default --timeout=180s
           echo "Rollout complete."
 
-      - name: Health check
-        run: |
-          echo "Checking pod readiness..."
-          ready=$(kubectl get pods -n default \
-            -l "app.kubernetes.io/name=filestash" \
-            -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}')
-
-          if echo "$ready" | grep -q "True"; then
-            echo "  ✓ filestash — pods ready"
-          else
-            echo "  ✗ filestash — pods NOT ready"
-            kubectl get pods -n default -l "app.kubernetes.io/name=filestash" -o wide
-            exit 1
-          fi
-
-          echo ""
-          echo "Pod details:"
-          kubectl get pods -n default -l "app.kubernetes.io/name=filestash" -o wide
-
       - name: Rollback on failure
         if: failure()
         run: |
