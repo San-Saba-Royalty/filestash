@@ -228,6 +228,72 @@ resource "kubernetes_deployment_v1" "filestash" {
 # Named "filestash" in the "default" namespace so Oathkeeper can reach it at
 # http://filestash.default.svc.cluster.local:8334 without any further config.
 
+# ── Ingress ────────────────────────────────────────────────────────────────────
+# Must live in the "iam" namespace so it can reference the oathkeeper-proxy
+# Service, which also lives there. cert-manager issues the TLS certificate.
+# All traffic goes through Oathkeeper for JWT validation before reaching
+# the filestash pod.
+
+locals {
+  filestash_ingress_annotations = {
+    "cert-manager.io/cluster-issuer"                    = "letsencrypt-prod"
+    "nginx.ingress.kubernetes.io/ssl-redirect"          = "true"
+    "nginx.ingress.kubernetes.io/force-ssl-redirect"    = "true"
+    "nginx.ingress.kubernetes.io/proxy-body-size"       = "8m"
+    "nginx.ingress.kubernetes.io/configuration-snippet" = <<-EOT
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-Frame-Options: SAMEORIGIN";
+      more_set_headers "X-XSS-Protection: 1; mode=block";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+    EOT
+  }
+}
+
+resource "kubernetes_ingress_v1" "filestash" {
+  metadata {
+    name      = "filestash-ingress"
+    namespace = "iam"
+
+    annotations = local.filestash_ingress_annotations
+
+    labels = {
+      "app.kubernetes.io/name"       = "filestash"
+      "app.kubernetes.io/managed-by" = "opentofu"
+    }
+  }
+
+  spec {
+    ingress_class_name = "nginx"
+
+    tls {
+      hosts       = [var.filestash_fqdn]
+      secret_name = "${replace(var.filestash_fqdn, ".", "-")}-tls"
+    }
+
+    rule {
+      host = var.filestash_fqdn
+
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+
+          backend {
+            service {
+              name = "oathkeeper-proxy"
+              port {
+                number = 4455
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+# ── Service ────────────────────────────────────────────────────────────────────
 resource "kubernetes_service_v1" "filestash" {
   metadata {
     name      = "filestash"

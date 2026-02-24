@@ -15,6 +15,7 @@ env:
   TOFU_WORKING_DIR: k8s/opentofu
   # Non-sensitive config — no GitHub variable setup needed
   APPLICATION_URL: https://files-ssr.prometheusags.ai
+  FILESTASH_FQDN: files-ssr.prometheusags.ai
   AZURE_STORAGE_ACCOUNT_NAME: sansaba
 
 permissions:
@@ -171,6 +172,7 @@ jobs:
             -var="resource_group_name=${{ env.RESOURCE_GROUP }}" \
             -var="cluster_name=${{ env.CLUSTER_NAME }}" \
             -var="application_url=${{ env.APPLICATION_URL }}" \
+            -var="filestash_fqdn=${{ env.FILESTASH_FQDN }}" \
             -var="azure_storage_account_name=${{ env.AZURE_STORAGE_ACCOUNT_NAME }}" \
             -var="azure_storage_account_key=${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}" \
             -var="filestash_admin_password=${{ secrets.FILESTASH_ADMIN_PASSWORD }}" \

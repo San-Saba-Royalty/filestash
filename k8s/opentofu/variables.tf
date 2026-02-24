@@ -38,3 +38,9 @@ variable "filestash_admin_password" {
   type        = string
   sensitive   = true
 }
+
+variable "filestash_fqdn" {
+  description = "Public hostname for Filestash (used for the Ingress TLS host and rule)"
+  type        = string
+  default     = "files-ssr.prometheusags.ai"
+}
