@@ -168,7 +168,7 @@ resource "kubernetes_deployment_v1" "filestash" {
         init_container {
           name    = "init-dirs"
           image   = "busybox:1.36"
-          command = ["sh", "-c", "mkdir -p /data/log /data/cache /data/search /data/share"]
+          command = ["sh", "-c", "mkdir -p /data/log /data/cache /data/search /data/share && chmod -R 777 /data"]
 
           volume_mount {
             name       = "data"
