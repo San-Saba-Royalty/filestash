@@ -218,8 +218,7 @@ resource "kubernetes_deployment_v1" "filestash" {
           }
 
           liveness_probe {
-            http_get {
-              path = "/api/about"
+            tcp_socket {
               port = 8334
             }
             initial_delay_seconds = 15
@@ -228,8 +227,7 @@ resource "kubernetes_deployment_v1" "filestash" {
           }
 
           readiness_probe {
-            http_get {
-              path = "/api/about"
+            tcp_socket {
               port = 8334
             }
             initial_delay_seconds = 10
