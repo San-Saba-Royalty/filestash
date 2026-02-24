@@ -18,8 +18,15 @@ RUN go mod download
 # Copy the full source (respects .dockerignore)
 COPY . .
 
-# Run code generators then compile
+# Git SHA injected by CI — BUILD_REF must be ≥ 7 chars or ServeIndex panics.
+# .git is excluded from the build context (.dockerignore), so we overwrite
+# constants_generated.go AFTER go generate runs (which writes an empty ref).
+ARG GIT_SHA=00000000000000000000000000000000000000000
+
 RUN go generate ./server/... && \
+    printf 'package common\n\nfunc init() {\n\tBUILD_REF = "%s"\n\tBUILD_DATE = "%s"\n}\n' \
+        "${GIT_SHA}" "$(date +%Y%m%d)" \
+        > server/common/constants_generated.go && \
     CGO_ENABLED=1 go build --tags "fts5" -o dist/filestash cmd/main.go
 
 # ── Stage 2: Minimal runtime image ─────────────────────────────────────────────

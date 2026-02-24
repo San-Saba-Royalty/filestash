@@ -107,6 +107,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            GIT_SHA=${{ github.sha }}
 
   # ── Deploy to AKS via OpenTofu ────────────────────────────────────────────
   deploy:
