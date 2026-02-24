@@ -1,36 +1,41 @@
-# Stage 1: Build backend from local source
+# ── Stage 1: Build ─────────────────────────────────────────────────────────────
 FROM golang:1.26-trixie AS builder
 
 WORKDIR /home/filestash/
 
-# Copy source (respects .dockerignore — node_modules, dist, .git excluded)
-COPY . .
-
-RUN apt-get update -qq && \
+# Install C build tools and image processing libraries needed by CGO plugins
+RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        curl make \
+        gcc git make pkg-config \
         libjpeg-dev libtiff-dev libpng-dev libwebp-dev \
         libraw-dev libheif-dev libgif-dev libvips-dev \
-    > /dev/null 2>&1 && \
-    make init && \
-    make build
+    && rm -rf /var/lib/apt/lists/*
 
-# Stage 2: Minimal runtime image
-FROM debian:stable-slim
+# Download Go modules in a separate layer for better cache reuse
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the full source (respects .dockerignore)
+COPY . .
+
+# Run code generators then compile
+RUN go generate ./server/... && \
+    CGO_ENABLED=1 go build --tags "fts5" -o dist/filestash cmd/main.go
+
+# ── Stage 2: Minimal runtime image ─────────────────────────────────────────────
+FROM debian:trixie-slim
 
 WORKDIR /app/
 
 COPY --from=builder /home/filestash/dist/ .
 
-RUN apt-get update -qq && \
+RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        apt-utils curl ffmpeg \
-        libjpeg-dev libtiff-dev libpng-dev libwebp-dev \
-        libraw-dev libheif-dev libgif-dev \
+        ca-certificates curl ffmpeg \
+        libjpeg62-turbo libtiff6 libpng16-16t64 libwebp7 \
+        libheif1 libgif7 libvips42t64 \
     && useradd --no-create-home filestash \
     && chown -R filestash:filestash /app/ \
-    && find /app/data/ -type d -exec chmod 770 {} \; \
-    && find /app/data/ -type f -exec chmod 760 {} \; \
     && chmod 730 /app/filestash \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
