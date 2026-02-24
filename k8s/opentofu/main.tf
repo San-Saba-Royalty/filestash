@@ -240,13 +240,6 @@ locals {
     "nginx.ingress.kubernetes.io/ssl-redirect"          = "true"
     "nginx.ingress.kubernetes.io/force-ssl-redirect"    = "true"
     "nginx.ingress.kubernetes.io/proxy-body-size"       = "8m"
-    "nginx.ingress.kubernetes.io/configuration-snippet" = <<-EOT
-      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
-      more_set_headers "X-Content-Type-Options: nosniff";
-      more_set_headers "X-Frame-Options: SAMEORIGIN";
-      more_set_headers "X-XSS-Protection: 1; mode=block";
-      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
-    EOT
   }
 }
 
