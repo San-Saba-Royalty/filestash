@@ -1,6 +1,6 @@
 module github.com/mickael-kerjean/filestash
 
-go 1.24.11
+go 1.26
 
 require (
 	cloud.google.com/go/storage v1.59.0
@@ -71,6 +71,7 @@ require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.2 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/storage/azfile v1.5.4 // indirect
 	github.com/Azure/go-ntlmssp v0.1.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.30.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.54.0 // indirect

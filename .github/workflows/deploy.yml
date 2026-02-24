@@ -1,0 +1,226 @@
+name: Build & Deploy Filestash
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+env:
+  ACR_REGISTRY: sansabaacr.azurecr.io
+  ACR_NAME: sansabaacr
+  IMAGE_NAME: filestash
+  RESOURCE_GROUP: sansaba-rg
+  CLUSTER_NAME: ssr
+  TOFU_VERSION: "1.9.0"
+  TOFU_WORKING_DIR: k8s/opentofu
+  # Non-sensitive config — no GitHub variable setup needed
+  APPLICATION_URL: https://files-ssr.prometheusags.ai
+  AZURE_STORAGE_ACCOUNT_NAME: sansaba
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Pre-flight: verify all required secrets exist ─────────────────────────
+  validate-secrets:
+    name: Validate Secrets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check required secrets
+        run: |
+          missing=()
+
+          check_secret() {
+            local name="$1"
+            local value="$2"
+            if [ -z "$value" ]; then
+              missing+=("$name")
+            fi
+          }
+
+          check_secret "AZURE_CLIENT_ID"              "${{ secrets.AZURE_CLIENT_ID }}"
+          check_secret "AZURE_CLIENT_SECRET"           "${{ secrets.AZURE_CLIENT_SECRET }}"
+          check_secret "AZURE_SUBSCRIPTION_ID"         "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          check_secret "AZURE_TENANT_ID"               "${{ secrets.AZURE_TENANT_ID }}"
+          check_secret "AZURE_STORAGE_ACCOUNT_KEY"     "${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}"
+          check_secret "FILESTASH_ADMIN_PASSWORD"      "${{ secrets.FILESTASH_ADMIN_PASSWORD }}"
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing required GitHub secrets: ${missing[*]}"
+            exit 1
+          fi
+
+          echo "All required secrets are present."
+
+  # ── Build and push Docker image to ACR ───────────────────────────────────
+  build-and-push:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    needs: [validate-secrets]
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+      image_full: ${{ env.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: >-
+            {
+              "clientId":       "${{ secrets.AZURE_CLIENT_ID }}",
+              "clientSecret":   "${{ secrets.AZURE_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+              "tenantId":       "${{ secrets.AZURE_TENANT_ID }}"
+            }
+
+      - name: Login to ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          # Build context is the repo root so COPY . . in the Dockerfile
+          # picks up the full Go source including the Azure File Share plugin.
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Deploy to AKS via OpenTofu ────────────────────────────────────────────
+  deploy:
+    name: Deploy to AKS
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: >-
+            {
+              "clientId":       "${{ secrets.AZURE_CLIENT_ID }}",
+              "clientSecret":   "${{ secrets.AZURE_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+              "tenantId":       "${{ secrets.AZURE_TENANT_ID }}"
+            }
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.CLUSTER_NAME }} \
+            --overwrite-existing
+
+      - name: Snapshot current deployment revision (for rollback)
+        id: snapshot
+        run: |
+          rev=$(kubectl get deployment filestash -n default \
+            -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}' \
+            2>/dev/null || echo "0")
+          echo "filestash_rev=$rev" >> "$GITHUB_OUTPUT"
+
+      - name: Install OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+
+      - name: OpenTofu Init
+        working-directory: ${{ env.TOFU_WORKING_DIR }}
+        env:
+          ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET:   ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: tofu init
+
+      - name: OpenTofu Plan
+        working-directory: ${{ env.TOFU_WORKING_DIR }}
+        env:
+          ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET:   ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          tofu plan \
+            -var="filestash_image=${{ needs.build-and-push.outputs.image_full }}" \
+            -var="resource_group_name=${{ env.RESOURCE_GROUP }}" \
+            -var="cluster_name=${{ env.CLUSTER_NAME }}" \
+            -var="application_url=${{ env.APPLICATION_URL }}" \
+            -var="azure_storage_account_name=${{ env.AZURE_STORAGE_ACCOUNT_NAME }}" \
+            -var="azure_storage_account_key=${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}" \
+            -var="filestash_admin_password=${{ secrets.FILESTASH_ADMIN_PASSWORD }}" \
+            -out=tfplan
+
+      - name: OpenTofu Apply
+        working-directory: ${{ env.TOFU_WORKING_DIR }}
+        env:
+          ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET:   ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: tofu apply -auto-approve tfplan
+
+      - name: Wait for rollout
+        run: |
+          echo "Waiting for filestash deployment to complete..."
+          kubectl rollout status deployment/filestash -n default --timeout=180s
+          echo "Rollout complete."
+
+      - name: Health check
+        run: |
+          echo "Checking pod readiness..."
+          ready=$(kubectl get pods -n default \
+            -l "app.kubernetes.io/name=filestash" \
+            -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}')
+
+          if echo "$ready" | grep -q "True"; then
+            echo "  ✓ filestash — pods ready"
+          else
+            echo "  ✗ filestash — pods NOT ready"
+            kubectl get pods -n default -l "app.kubernetes.io/name=filestash" -o wide
+            exit 1
+          fi
+
+          echo ""
+          echo "Pod details:"
+          kubectl get pods -n default -l "app.kubernetes.io/name=filestash" -o wide
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          prev_rev="${{ steps.snapshot.outputs.filestash_rev }}"
+          if [ "$prev_rev" != "0" ]; then
+            echo "::warning::Deploy failed — rolling back filestash to revision $prev_rev"
+            kubectl rollout undo deployment/filestash -n default \
+              --to-revision="$prev_rev" || true
+            sleep 20
+            echo "Pod status after rollback:"
+            kubectl get pods -n default -l "app.kubernetes.io/name=filestash" -o wide
+          else
+            echo "No previous revision — skipping rollback"
+          fi

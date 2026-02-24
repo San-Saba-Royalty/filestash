@@ -1,42 +1,13 @@
 {
-    "general": {
-    },
-    "features": {
-    },
-    "log": {
-    },
-    "email": {
-    },
-    "oauth": {
-    },
-    "connections": [
-        {
-            "type": "webdav",
-            "label": "WebDav"
-        },
-        {
-            "type": "ftp",
-            "label": "FTP"
-        },
-        {
-            "type": "sftp",
-            "label": "SFTP"
-        },
-        {
-            "type": "git",
-            "label": "GIT"
-        },
-        {
-            "type": "s3",
-            "label": "S3"
-        },
-        {
-            "type": "dropbox",
-            "label": "Dropbox"
-        },
-        {
-            "type": "gdrive",
-            "label": "Drive"
-        }
-    ]
+	"general": {},
+	"features": {},
+	"log": {},
+	"email": {},
+	"oauth": {},
+	"connections": [
+		{
+			"type": "azurefileshare",
+			"label": "Azure File Share"
+		}
+	]
 }

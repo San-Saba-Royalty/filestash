@@ -1,0 +1,13 @@
+.git
+.github
+.claude
+.codex
+.specify
+node_modules
+dist
+public/node_modules
+*.log
+*.swp
+*.swo
+.DS_Store
+filestash-enterprise

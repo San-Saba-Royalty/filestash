@@ -1,4 +1,4 @@
-//go:build !cgo || windows
+//go:build !linux || !cgo
 
 package compress
 

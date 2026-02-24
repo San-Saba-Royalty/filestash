@@ -30,3 +30,11 @@ public/package.json
 public/README.org
 
 filestash-enterprise
+
+# OpenTofu
+k8s/opentofu/terraform.tfvars
+k8s/opentofu/.terraform/
+k8s/opentofu/.terraform.lock.hcl
+k8s/opentofu/terraform.tfstate
+k8s/opentofu/terraform.tfstate.backup
+k8s/opentofu/tfplan
