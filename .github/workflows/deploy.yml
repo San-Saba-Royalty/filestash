@@ -159,6 +159,17 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: tofu init
 
+      - name: Delete stuck Pending PVC (storage class cannot be changed in-place)
+        run: |
+          phase=$(kubectl get pvc filestash-data -n default \
+            -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound")
+          if [ "$phase" = "Pending" ]; then
+            echo "PVC filestash-data is Pending — deleting so it can be recreated with Immediate binding"
+            kubectl delete pvc filestash-data -n default --wait=true
+          else
+            echo "PVC filestash-data phase: ${phase} — no action needed"
+          fi
+
       - name: Import existing resources into state
         working-directory: ${{ env.TOFU_WORKING_DIR }}
         env:
@@ -187,11 +198,12 @@ jobs:
             fi
           }
 
-          import_if_missing "kubernetes_secret_v1.filestash_config"      "default/filestash-config"
+          import_if_missing "kubernetes_storage_class_v1.filestash_immediate" "filestash-immediate"
+          import_if_missing "kubernetes_secret_v1.filestash_config"           "default/filestash-config"
           import_if_missing "kubernetes_persistent_volume_claim_v1.filestash_data" "default/filestash-data"
-          import_if_missing "kubernetes_deployment_v1.filestash"          "default/filestash"
-          import_if_missing "kubernetes_service_v1.filestash"             "default/filestash"
-          import_if_missing "kubernetes_ingress_v1.filestash"             "iam/filestash-ingress"
+          import_if_missing "kubernetes_deployment_v1.filestash"              "default/filestash"
+          import_if_missing "kubernetes_service_v1.filestash"                 "default/filestash"
+          import_if_missing "kubernetes_ingress_v1.filestash"                 "iam/filestash-ingress"
 
       - name: OpenTofu Plan
         working-directory: ${{ env.TOFU_WORKING_DIR }}

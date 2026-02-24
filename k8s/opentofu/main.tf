@@ -63,9 +63,33 @@ resource "kubernetes_secret_v1" "filestash_config" {
   }
 }
 
+# ── Storage class with Immediate binding ───────────────────────────────────────
+# AKS default (managed-csi) uses WaitForFirstConsumer, which blocks until a pod
+# is scheduled — but OpenTofu creates the PVC before the deployment, causing a
+# deadlock. Immediate binding resolves the PVC as soon as it is created.
+
+resource "kubernetes_storage_class_v1" "filestash_immediate" {
+  metadata {
+    name = "filestash-immediate"
+
+    labels = {
+      "app.kubernetes.io/name"       = "filestash"
+      "app.kubernetes.io/managed-by" = "opentofu"
+    }
+  }
+
+  storage_provisioner    = "disk.csi.azure.com"
+  reclaim_policy         = "Delete"
+  volume_binding_mode    = "Immediate"
+  allow_volume_expansion = true
+
+  parameters = {
+    skuName = "Standard_LRS"
+  }
+}
+
 # ── Persistent storage ─────────────────────────────────────────────────────────
 # Stores filestash state: share links, search index, session cache.
-# Uses the cluster's default StorageClass (Azure Disk via AKS).
 
 resource "kubernetes_persistent_volume_claim_v1" "filestash_data" {
   metadata {
@@ -79,7 +103,8 @@ resource "kubernetes_persistent_volume_claim_v1" "filestash_data" {
   }
 
   spec {
-    access_modes = ["ReadWriteOnce"]
+    access_modes       = ["ReadWriteOnce"]
+    storage_class_name = kubernetes_storage_class_v1.filestash_immediate.metadata[0].name
 
     resources {
       requests = {
