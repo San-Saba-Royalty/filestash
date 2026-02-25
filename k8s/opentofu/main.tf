@@ -163,16 +163,29 @@ resource "kubernetes_deployment_v1" "filestash" {
       }
 
       spec {
-        # Create required state subdirectories on a fresh (empty) PVC.
-        # Filestash expects log/, cache/, search/, and share/ to pre-exist.
+        # Seed the writable config from the Secret and create required state dirs.
+        # Filestash (uid 1000) needs write access to config.json at runtime so
+        # the admin UI can persist settings. A read-only Secret subPath mount
+        # prevents that, so we copy the Secret into the writable PVC here and
+        # never mount the Secret directly into the main container.
+        # The copy runs on every pod start so Secret changes are always picked up.
         init_container {
-          name    = "init-dirs"
-          image   = "busybox:1.36"
-          command = ["sh", "-c", "mkdir -p /data/log /data/cache /data/search /data/share && chmod -R 777 /data"]
+          name  = "init-dirs"
+          image = "busybox:1.36"
+          command = [
+            "sh", "-c",
+            "mkdir -p /data/log /data/cache /data/search /data/share /data/config && cp /secrets/config.json /data/config/config.json && chmod -R 777 /data"
+          ]
 
           volume_mount {
             name       = "data"
             mount_path = "/data"
+          }
+
+          volume_mount {
+            name       = "config"
+            mount_path = "/secrets"
+            read_only  = true
           }
         }
 
@@ -191,16 +204,9 @@ resource "kubernetes_deployment_v1" "filestash" {
             value = var.application_url
           }
 
-          # Mount runtime config from secret — overrides baked-in config.json.
-          volume_mount {
-            name       = "config"
-            mount_path = "/app/data/state/config/config.json"
-            sub_path   = "config.json"
-            read_only  = true
-          }
-
-          # Mount persistent state (shares, cache, search index).
-          # Excludes config/ — that directory is handled by the secret mount above.
+          # Mount persistent state (shares, cache, search index, and config).
+          # config/config.json is seeded from the Secret by the init container
+          # and lives on the PVC so Filestash can write to it at runtime.
           volume_mount {
             name       = "data"
             mount_path = "/app/data/state"
