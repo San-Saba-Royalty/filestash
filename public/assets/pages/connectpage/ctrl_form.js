@@ -165,7 +165,7 @@ export default async function(render) {
         connections$.pipe(
             rxjs.filter((conns) => conns.length === 1),
             rxjs.map((conns) => conns[0]),
-            rxjs.filter(({ middleware }) => middleware),
+            rxjs.filter(({ middleware }) => !middleware),
         ),
     ).pipe(
         rxjs.mergeMap((formData) => { // CASE 1: authentication middleware flow

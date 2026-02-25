@@ -51,12 +51,13 @@ func Build(r *mux.Router) {
 
 	// API for File management
 	files := r.PathPrefix(WithBase("/api/files")).Subrouter()
-	middlewares = []Middleware{ApiHeaders, SecureHeaders, SessionStart, LoggedInOnly, PluginInjector}
+	middlewares = []Middleware{ApiHeaders, SecureHeaders, OpenCORS, SessionStart, LoggedInOnly, PluginInjector}
 	files.HandleFunc("/cat", NewMiddlewareChain(FileCat, middlewares)).Methods("GET", "HEAD")
+	files.HandleFunc("/cat", NewMiddlewareChain(FileCat, middlewares)).Methods("OPTIONS")
 	files.HandleFunc("/zip", NewMiddlewareChain(FileDownloader, middlewares)).Methods("GET")
+	files.HandleFunc("/zip", NewMiddlewareChain(FileDownloader, middlewares)).Methods("OPTIONS")
 	files.HandleFunc("/unzip", NewMiddlewareChain(FileExtract, middlewares)).Methods("POST")
 	middlewares = []Middleware{ApiHeaders, SecureHeaders, SecureOrigin, SessionStart, LoggedInOnly, PluginInjector}
-	files.HandleFunc("/cat", NewMiddlewareChain(FileAccess, middlewares)).Methods("OPTIONS")
 	files.HandleFunc("/cat", NewMiddlewareChain(FileSave, middlewares)).Methods("POST", "PATCH")
 	files.HandleFunc("/save", NewMiddlewareChain(FileSave, middlewares)).Methods("POST", "PATCH", "HEAD", "OPTIONS")
 	files.HandleFunc("/ls", NewMiddlewareChain(FileLs, middlewares)).Methods("GET")

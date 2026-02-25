@@ -14,9 +14,12 @@ env:
   TOFU_VERSION: "1.9.0"
   TOFU_WORKING_DIR: k8s/opentofu
   # Non-sensitive config — no GitHub variable setup needed
-  APPLICATION_URL: https://files-ssr.prometheusags.ai
+  APPLICATION_URL: files-ssr.prometheusags.ai
   FILESTASH_FQDN: files-ssr.prometheusags.ai
   AZURE_STORAGE_ACCOUNT_NAME: sansaba
+  # Comma-separated share names to auto-configure as connections in Filestash.
+  # Leave empty to expose a single connection with access to all shares.
+  FILESTASH_SHARES: ""
 
 permissions:
   contents: read
@@ -198,12 +201,14 @@ jobs:
                 -var="azure_storage_account_name=${{ env.AZURE_STORAGE_ACCOUNT_NAME }}" \
                 -var="azure_storage_account_key=${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}" \
                 -var="filestash_admin_password=${{ secrets.FILESTASH_ADMIN_PASSWORD }}" \
+                -var="filestash_shares=${{ env.FILESTASH_SHARES }}" \
                 "$resource" "$id" || echo "  import failed (may not exist yet) — continuing"
             fi
           }
 
           import_if_missing "kubernetes_storage_class_v1.filestash_immediate" "filestash-immediate"
           import_if_missing "kubernetes_secret_v1.filestash_config"           "default/filestash-config"
+          import_if_missing "kubernetes_secret_v1.filestash_secrets"          "default/filestash-secrets"
           import_if_missing "kubernetes_persistent_volume_claim_v1.filestash_data" "default/filestash-data"
           import_if_missing "kubernetes_deployment_v1.filestash"              "default/filestash"
           import_if_missing "kubernetes_service_v1.filestash"                 "default/filestash"
@@ -226,6 +231,7 @@ jobs:
             -var="azure_storage_account_name=${{ env.AZURE_STORAGE_ACCOUNT_NAME }}" \
             -var="azure_storage_account_key=${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}" \
             -var="filestash_admin_password=${{ secrets.FILESTASH_ADMIN_PASSWORD }}" \
+            -var="filestash_shares=${{ env.FILESTASH_SHARES }}" \
             -out=tfplan
 
       - name: OpenTofu Apply

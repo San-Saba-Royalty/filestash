@@ -43,6 +43,21 @@ func PublicCORS(fn HandlerFunc) HandlerFunc {
 	})
 }
 
+func OpenCORS(fn HandlerFunc) HandlerFunc {
+	return HandlerFunc(func(ctx *App, res http.ResponseWriter, req *http.Request) {
+		header := res.Header()
+		header.Set("Access-Control-Allow-Origin", "*")
+		header.Set("Access-Control-Allow-Methods", "*")
+		header.Set("Access-Control-Allow-Headers", "*")
+		header.Set("Access-Control-Expose-Headers", "Content-Disposition, Content-Length, Content-Range, Accept-Ranges")
+		if req.Method == http.MethodOptions {
+			res.WriteHeader(http.StatusNoContent)
+			return
+		}
+		fn(ctx, res, req)
+	})
+}
+
 func IndexHeaders(fn HandlerFunc) HandlerFunc {
 	return HandlerFunc(func(ctx *App, res http.ResponseWriter, req *http.Request) {
 		header := res.Header()
