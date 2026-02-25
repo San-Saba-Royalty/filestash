@@ -98,7 +98,7 @@ func FileLs(ctx *App, res http.ResponseWriter, req *http.Request) {
 	for _, auth := range Hooks.Get.AuthorisationMiddleware() {
 		if err = auth.Ls(ctx, path); err != nil {
 			Log.Info("ls::auth '%s'", err.Error())
-			SendErrorResult(res, ErrNotAuthorized)
+			SendErrorResult(res, err)
 			return
 		}
 		ctx.Context = context.WithValue(ctx.Context, "AUDIT", false)
@@ -110,6 +110,7 @@ func FileLs(ctx *App, res http.ResponseWriter, req *http.Request) {
 		}
 		if err = auth.Mv(ctx, path, path); err != nil {
 			perms.CanRename = NewBool(false)
+			perms.CanMove = NewBool(false)
 		}
 		if err = auth.Save(ctx, path); err != nil {
 			perms.CanUpload = NewBool(false)
@@ -120,6 +121,7 @@ func FileLs(ctx *App, res http.ResponseWriter, req *http.Request) {
 		if err = auth.Cat(ctx, path); err != nil {
 			perms.CanSee = NewBool(false)
 		}
+		ctx.Context = context.WithValue(ctx.Context, "AUDIT", nil)
 	}
 	if model.CanEdit(ctx) == false {
 		perms.CanCreateFile = NewBool(false)
@@ -215,8 +217,12 @@ func FileCat(ctx *App, res http.ResponseWriter, req *http.Request) {
 	}
 
 	for _, auth := range Hooks.Get.AuthorisationMiddleware() {
-		if err = auth.Cat(ctx, path); err != nil {
-			Log.Info("cat::auth '%s'", err.Error())
+		if req.Method == http.MethodHead {
+			if err = auth.Stat(ctx, path); err != nil {
+				SendErrorResult(res, ErrNotAuthorized)
+				return
+			}
+		} else if err = auth.Cat(ctx, path); err != nil {
 			SendErrorResult(res, ErrNotAuthorized)
 			return
 		}
@@ -243,7 +249,7 @@ func FileCat(ctx *App, res http.ResponseWriter, req *http.Request) {
 			if req.Method == http.MethodHead {
 				if finfo, err := ctx.Backend.Stat(path); err == nil && finfo.IsDir() {
 					if finfo.ModTime().Unix() > 0 {
-						header.Set("Last-Modified", finfo.ModTime().Format(time.RFC1123))
+						header.Set("Last-Modified", finfo.ModTime().UTC().Format(http.TimeFormat))
 					}
 					header.Set("Content-Type", "inode/directory")
 					res.WriteHeader(http.StatusNoContent)
@@ -268,7 +274,7 @@ func FileCat(ctx *App, res http.ResponseWriter, req *http.Request) {
 	if thumb == "true" {
 		fileMutation = true
 		if finfo, err := ctx.Backend.Stat(path); err == nil && finfo.ModTime().Unix() > 0 {
-			lm := finfo.ModTime().Format(time.RFC1123)
+			lm := finfo.ModTime().UTC().Format(http.TimeFormat)
 			if lm == req.Header.Get("If-Modified-Since") {
 				res.WriteHeader(http.StatusNotModified)
 				return
@@ -377,7 +383,7 @@ func FileCat(ctx *App, res http.ResponseWriter, req *http.Request) {
 	} else if fileMutation == false && contentLength < 0 {
 		if finfo, err := ctx.Backend.Stat(path); err == nil {
 			if finfo.ModTime().Unix() > 0 {
-				header.Set("Last-Modified", finfo.ModTime().Format(time.RFC1123))
+				header.Set("Last-Modified", finfo.ModTime().UTC().Format(http.TimeFormat))
 			}
 			if finfo.IsDir() {
 				header.Set("Content-Type", "inode/directory")
@@ -404,7 +410,7 @@ func FileCat(ctx *App, res http.ResponseWriter, req *http.Request) {
 	}
 	header.Set("Accept-Ranges", "bytes")
 
-	if req.Method != "HEAD" {
+	if req.Method != http.MethodHead {
 		size := 32
 		if thumb != "true" {
 			switch Config.Get("general.buffer_size").String() {
