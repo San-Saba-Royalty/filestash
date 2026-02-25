@@ -247,7 +247,11 @@ func ServeIndex(indexPath string) func(*App, http.ResponseWriter, *http.Request)
 			"favicon": favicon(),
 			"bundle": func() []string {
 				b := make([]string, len(preload))
-				v := BUILD_REF[0:7] + "::" + sign
+				ref := BUILD_REF
+				if len(ref) < 7 {
+					ref = "0000000"
+				}
+				v := ref[:7] + "::" + sign
 				for i := 0; i < len(preload); i++ {
 					b[i] = fmt.Sprintf("./assets/bundle.js?version=%s&chunk=%d", v, i+1)
 				}

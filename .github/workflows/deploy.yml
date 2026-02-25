@@ -61,8 +61,8 @@ jobs:
     needs: [validate-secrets]
 
     outputs:
-      image_tag: ${{ steps.meta.outputs.version }}
-      image_full: ${{ env.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+      image_tag: ${{ github.sha }}
+      image_full: ${{ env.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
     steps:
       - name: Checkout
@@ -103,7 +103,9 @@ jobs:
           context: .
           file: docker/Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ env.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
