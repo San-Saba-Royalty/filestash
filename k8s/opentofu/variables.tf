@@ -50,13 +50,3 @@ variable "filestash_shares" {
   type        = string
   default     = ""
 }
-
-variable "prom_key" {
-  description = "Path to the wildcard private key file for Prometheus AG TLS"
-  type        = string
-}
-
-variable "prom_cert" {
-  description = "Path to the wildcard certificate file for Prometheus AG TLS"
-  type        = string
-}

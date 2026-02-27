@@ -400,19 +400,3 @@ resource "kubernetes_service_v1" "filestash" {
   }
 }
 
-# ── Wildcard TLS Secret ────────────────────────────────────────────────────────
-# Provisions the wildcard cert into the "iam" namespace where the ingress lives.
-
-resource "kubernetes_secret_v1" "prom_tls" {
-  metadata {
-    name      = "prom-tls"
-    namespace = "iam"
-  }
-
-  type = "kubernetes.io/tls"
-
-  data = {
-    "tls.crt" = file(var.prom_cert)
-    "tls.key" = file(var.prom_key)
-  }
-}
