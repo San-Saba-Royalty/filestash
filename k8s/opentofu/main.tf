@@ -28,22 +28,16 @@ provider "kubernetes" {
 # We inject the Azure File Share credentials here so they never live in source.
 
 locals {
+  # Structural/non-sensitive config only.
+  # admin_password and connections are now injected via environment variables
+  # at runtime by Filestash's Initialise() so they never live in source or
+  # in the plaintext portion of a ConfigMap.
   filestash_config = jsonencode({
-    general = {
-      admin_password = var.filestash_admin_password
-    }
-    features   = {}
-    log        = {}
-    email      = {}
-    oauth      = {}
-    connections = [
-      {
-        type         = "azurefileshare"
-        label        = "Azure File Share"
-        account_name = var.azure_storage_account_name
-        account_key  = var.azure_storage_account_key
-      }
-    ]
+    general  = { host = var.application_url, force_ssl = true }
+    features = {}
+    log      = {}
+    email    = {}
+    oauth    = {}
   })
 }
 
@@ -60,6 +54,26 @@ resource "kubernetes_secret_v1" "filestash_config" {
 
   data = {
     "config.json" = local.filestash_config
+  }
+}
+
+# Sensitive runtime values delivered as environment variables.
+# Filestash's Initialise() reads these and bcrypt-hashes the password and
+# builds Config.Conn entries — they are never written to the config Secret.
+resource "kubernetes_secret_v1" "filestash_secrets" {
+  metadata {
+    name      = "filestash-secrets"
+    namespace = "default"
+
+    labels = {
+      "app.kubernetes.io/name"       = "filestash"
+      "app.kubernetes.io/managed-by" = "opentofu"
+    }
+  }
+
+  data = {
+    admin-password    = var.filestash_admin_password
+    azure-account-key = var.azure_storage_account_key
   }
 }
 
@@ -204,6 +218,36 @@ resource "kubernetes_deployment_v1" "filestash" {
             value = var.application_url
           }
 
+          env {
+            name = "ADMIN_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret_v1.filestash_secrets.metadata[0].name
+                key  = "admin-password"
+              }
+            }
+          }
+
+          env {
+            name  = "AZUREFILESHARE_ACCOUNT_NAME"
+            value = var.azure_storage_account_name
+          }
+
+          env {
+            name = "AZUREFILESHARE_ACCOUNT_KEY"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret_v1.filestash_secrets.metadata[0].name
+                key  = "azure-account-key"
+              }
+            }
+          }
+
+          env {
+            name  = "AZUREFILESHARE_SHARES"
+            value = var.filestash_shares
+          }
+
           # Mount persistent state (shares, cache, search index, and config).
           # config/config.json is seeded from the Secret by the init container
           # and lives on the PVC so Filestash can write to it at runtime.
@@ -262,6 +306,7 @@ resource "kubernetes_deployment_v1" "filestash" {
 
   depends_on = [
     kubernetes_secret_v1.filestash_config,
+    kubernetes_secret_v1.filestash_secrets,
     kubernetes_persistent_volume_claim_v1.filestash_data,
   ]
 }
@@ -278,10 +323,9 @@ resource "kubernetes_deployment_v1" "filestash" {
 
 locals {
   filestash_ingress_annotations = {
-    "cert-manager.io/cluster-issuer"                    = "letsencrypt-prod"
-    "nginx.ingress.kubernetes.io/ssl-redirect"          = "true"
-    "nginx.ingress.kubernetes.io/force-ssl-redirect"    = "true"
-    "nginx.ingress.kubernetes.io/proxy-body-size"       = "8m"
+    "nginx.ingress.kubernetes.io/ssl-redirect"       = "true"
+    "nginx.ingress.kubernetes.io/force-ssl-redirect" = "true"
+    "nginx.ingress.kubernetes.io/proxy-body-size"    = "8m"
   }
 }
 
@@ -303,7 +347,7 @@ resource "kubernetes_ingress_v1" "filestash" {
 
     tls {
       hosts       = [var.filestash_fqdn]
-      secret_name = "${replace(var.filestash_fqdn, ".", "-")}-tls"
+      secret_name = "prom-tls"
     }
 
     rule {
@@ -353,5 +397,22 @@ resource "kubernetes_service_v1" "filestash" {
     }
 
     type = "ClusterIP"
+  }
+}
+
+# ── Wildcard TLS Secret ────────────────────────────────────────────────────────
+# Provisions the wildcard cert into the "iam" namespace where the ingress lives.
+
+resource "kubernetes_secret_v1" "prom_tls" {
+  metadata {
+    name      = "prom-tls"
+    namespace = "iam"
+  }
+
+  type = "kubernetes.io/tls"
+
+  data = {
+    "tls.crt" = file(var.prom_cert)
+    "tls.key" = file(var.prom_key)
   }
 }

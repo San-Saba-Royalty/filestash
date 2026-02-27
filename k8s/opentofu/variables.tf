@@ -44,3 +44,19 @@ variable "filestash_fqdn" {
   type        = string
   default     = "files-ssr.prometheusags.ai"
 }
+
+variable "filestash_shares" {
+  description = "Comma-separated Azure File Share names to auto-configure as connections (empty = one connection with access to all shares)"
+  type        = string
+  default     = ""
+}
+
+variable "prom_key" {
+  description = "Path to the wildcard private key file for Prometheus AG TLS"
+  type        = string
+}
+
+variable "prom_cert" {
+  description = "Path to the wildcard certificate file for Prometheus AG TLS"
+  type        = string
+}
